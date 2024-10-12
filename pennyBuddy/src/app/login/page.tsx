@@ -8,13 +8,11 @@ import { useRouter } from 'next/navigation';
 import "../../../styles/globals.css";
 import Header from '../header';
 
-// Define form inputs type
 type LoginFormInputs = {
   email: string;
   password: string;
 };
 
-// Validation schema with Zod
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
