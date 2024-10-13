@@ -7,13 +7,15 @@ import { Query } from "appwrite";
 import { account } from '../../../service/appwrite';
 import { useRouter } from "next/navigation";
 
-// Define a type for the account details
+// Update the AccountDetails type
 type AccountDetails = {
   accountName: string;
   institutionName: string | null;
   accountType: string;
   balance: number | null;
-  transactions: { date: string; name: string; amount: number }[];
+  transactionDates: string[];   // Array to hold transaction dates
+  transactionNames: string[];   // Array to hold transaction names
+  transactionAmounts: number[]; // Array to hold transaction amounts
 };
 
 const fetchLoggedInUserId = async () => {
@@ -37,6 +39,8 @@ const DashboardPage = () => {
   const [userId, setUserId] = useState<string | null>(null);
 
   const router = useRouter();
+
+  // Fetch the link token from your API
   const fetchLinkToken = async (userId: string) => {
     try {
       const response = await fetch('/api/create_link_token', {
@@ -55,11 +59,12 @@ const DashboardPage = () => {
     }
   };
 
+  // Fetch the bank accounts from the Appwrite database
   const fetchBankAccounts = async (userId: string) => {
     try {
       const result = await databases.listDocuments(
-        "670acb9b0015637c4c55",
-        "670adcaf000fc99a5bbe",
+        "670acb9b0015637c4c55", // Replace with your database ID
+        "670adcaf000fc99a5bbe", // Replace with your collection ID
         [Query.equal("userId", userId)]
       );
 
@@ -68,7 +73,9 @@ const DashboardPage = () => {
         institutionName: doc.institutionName,
         accountType: doc.accountType,
         balance: doc.balance || null,
-        transactions: doc.transactions || [],
+        transactionDates: doc.transactionDates || [], // Array for transaction dates
+        transactionNames: doc.transactionNames || [], // Array for transaction names
+        transactionAmounts: doc.transactionAmounts || [], // Array for transaction amounts
       }));
 
       setAccountDetails(accounts);
@@ -77,6 +84,7 @@ const DashboardPage = () => {
     }
   };
 
+  // Fetch balance from Plaid
   const fetchBalance = async (accessToken: string) => {
     try {
       const response = await fetch('/api/fetch_balance', {
@@ -92,6 +100,7 @@ const DashboardPage = () => {
     }
   };
 
+  // Fetch transactions from Plaid
   const fetchTransactions = async (accessToken: string) => {
     try {
       const response = await fetch('/api/fetch_transactions', {
@@ -100,6 +109,7 @@ const DashboardPage = () => {
         body: JSON.stringify({ accessToken }),
       });
       const data = await response.json();
+      console.log(data);
       return data.transactions;
     } catch (error) {
       console.error("Error fetching transactions:", error);
@@ -107,6 +117,7 @@ const DashboardPage = () => {
     }
   };
 
+  // PlaidLink integration and handling Plaid token exchange
   const { open, ready } = usePlaidLink({
     token: linkToken!,
     onSuccess: async (publicToken, metadata) => {
@@ -130,25 +141,31 @@ const DashboardPage = () => {
             accountType: account.type,
           }));
 
-          console.log(data);
           const balance = await fetchBalance(data.access_token);
           const transactions = await fetchTransactions(data.access_token);
+
+          // Break down transactions into separate arrays
+          const transactionDates = transactions.map((transaction: any) => transaction.date);
+          const transactionNames = transactions.map((transaction: any) => transaction.name);
+          const transactionAmounts = transactions.map((transaction: any) => transaction.amount);
 
           await Promise.all(
             accounts.map(async (account) => {
               await databases.createDocument(
-                "670acb9b0015637c4c55", 
-                "670adcaf000fc99a5bbe",
+                "670acb9b0015637c4c55", // Replace with your database ID
+                "670adcaf000fc99a5bbe", // Replace with your collection ID
                 "unique()",
                 {
                   accessToken: data.access_token,
-                  itemId: data.itemId,
+                  itemId: data.item_id,
                   accountName: account.accountName,
                   institutionName: account.institutionName,
                   accountType: account.accountType,
                   userId, 
                   balance: balance ? balance[0].balances.current : 0,
-                  transactions: transactions || [],
+                  transactionDates, // Store transaction dates array
+                  transactionNames, // Store transaction names array
+                  transactionAmounts, // Store transaction amounts array
                 }
               );
             })
@@ -167,6 +184,7 @@ const DashboardPage = () => {
     },
   });
 
+  // Handle logout functionality
   const handleLogout = async () => {
     try {
       await account.deleteSession("current");
@@ -193,12 +211,12 @@ const DashboardPage = () => {
     <div className="bg-white min-h-screen">
       <Header />
       <div className="container mx-auto p-6">
-      <button
-        onClick={handleLogout}
-        className="mt-6 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-500"
-      >
-        Log Out
-      </button>
+        <button
+          onClick={handleLogout}
+          className="mt-6 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-500"
+        >
+          Log Out
+        </button>
         <h1 className="text-3xl font-semibold mb-6 text-gray-600">Welcome to Your Dashboard</h1>
         <button
           onClick={() => ready && open()}
@@ -215,11 +233,14 @@ const DashboardPage = () => {
               <p><strong>Institution:</strong> {account.institutionName}</p>
               <p><strong>Account Type:</strong> {account.accountType}</p>
               <p><strong>Balance:</strong> {account.balance !== null ? `$${account.balance}` : "N/A"}</p>
-              {account.transactions.length > 0 ? (
+              {/* Display transactions */}
+              {account.transactionDates.length > 0 ? (
                 <div>
                   <h3>Recent Transactions:</h3>
-                  {account.transactions.map((transaction, i) => (
-                    <p key={i}>{transaction.date} - {transaction.name}: ${transaction.amount}</p>
+                  {account.transactionDates.map((date, i) => (
+                    <p key={i}>
+                      {date} - {account.transactionNames[i]}: ${account.transactionAmounts[i]}
+                    </p>
                   ))}
                 </div>
               ) : (

@@ -1,3 +1,4 @@
+import { NextApiRequest, NextApiResponse } from 'next';
 import { Configuration, PlaidApi, PlaidEnvironments, TransactionsGetResponse } from 'plaid';
 
 const config = new Configuration({
@@ -12,24 +13,38 @@ const config = new Configuration({
 
 const client = new PlaidApi(config);
 
-export default async function handler(req: { method: string; body: { accessToken: any; }; }, res: { status: (arg0: number) => { (): any; new(): any; json: { (arg0: TransactionsGetResponse): void; new(): any; }; end: { (arg0: string): void; new(): any; }; }; setHeader: (arg0: string, arg1: string[]) => void; }) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method === 'POST') {
-    try {
-      const { accessToken } = req.body;
+    const { accessToken } = req.body;
 
+    // Sanity check for access token
+    if (!accessToken) {
+      res.status(400).json({ error: 'Access token is required' });
+      return;
+    }
+
+    try {
+      // Fetch transaction data
       const response = await client.transactionsGet({
         access_token: accessToken,
-        start_date: '2023-01-01',
+        start_date: '2023-01-01', // Adjust date range as needed
         end_date: '2023-12-31',
-        options: { count: 10 },
+        options: { count: 10 }, // Increase this count or handle pagination if needed
       });
 
+      // Return the transaction data in response
+      console.log(response);
       res.status(200).json(response.data);
-    } catch (error) {
-      console.error('Error fetching transactions:', error);
-      res.status(500).json({ error: 'Unable to fetch transactions' });
+    } catch (error: any) {
+      console.error('Error fetching transactions:', error.response?.data || error.message);
+
+      // Respond with a detailed error message from Plaid, if available
+      res.status(500).json({
+        error: error.response?.data?.error_message || 'Unable to fetch transactions. Please try again.',
+      });
     }
   } else {
+    // Handle non-POST requests
     res.setHeader('Allow', ['POST']);
     res.status(405).end(`Method ${req.method} Not Allowed`);
   }
